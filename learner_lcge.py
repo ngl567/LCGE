@@ -77,12 +77,12 @@ args = parser.parse_args()
 
 dataset = TemporalDataset(args.dataset)
 
-with open("./tkbc/src_data/rulelearning/" + args.dataset + "/rule1_p1.json", 'r') as load_rule1_p1:
+with open("./src_data/rulelearning/" + args.dataset + "/rule1_p1.json", 'r') as load_rule1_p1:
     rule1_p1 = json.load(load_rule1_p1)
-with open("./tkbc/src_data/rulelearning/" + args.dataset + "/rule1_p2.json", 'r') as load_rule1_p2:
+with open("./src_data/rulelearning/" + args.dataset + "/rule1_p2.json", 'r') as load_rule1_p2:
     rule1_p2 = json.load(load_rule1_p2)
 
-f = open("./tkbc/src_data/rulelearning/" + args.dataset + "/rule2_p1.txt", 'r')
+f = open("./src_data/rulelearning/" + args.dataset + "/rule2_p1.txt", 'r')
 rule2_p1 = {}
 for line in f:
     head, body1, body2, confi = line.strip().split("\t")
@@ -92,7 +92,7 @@ for line in f:
     rule2_p1[head][(body1, body2)] = confi
 f.close()
 
-f = open("./tkbc/src_data/rulelearning/" + args.dataset + "/rule2_p2.txt", 'r')
+f = open("./src_data/rulelearning/" + args.dataset + "/rule2_p2.txt", 'r')
 rule2_p2 = {}
 for line in f:
     head, body1, body2, confi = line.strip().split("\t")
@@ -102,7 +102,7 @@ for line in f:
     rule2_p2[head][(body1, body2)] = confi
 f.close()
 
-f = open("./tkbc/src_data/rulelearning/" + args.dataset + "/rule2_p3.txt", 'r')
+f = open("./src_data/rulelearning/" + args.dataset + "/rule2_p3.txt", 'r')
 rule2_p3 = {}
 for line in f:
     head, body1, body2, confi = line.strip().split("\t")
@@ -112,7 +112,7 @@ for line in f:
     rule2_p3[head][(body1, body2)] = confi
 f.close()
 
-f = open("./tkbc/src_data/rulelearning/" + args.dataset + "/rule2_p4.txt", 'r')
+f = open("./src_data/rulelearning/" + args.dataset + "/rule2_p4.txt", 'r')
 rule2_p4 = {}
 for line in f:
     head, body1, body2, confi = line.strip().split("\t")
