@@ -7,6 +7,9 @@ This is the PyTorch implementation of the [LCGE](https://arxiv.org/pdf/2211.1686
 ## An Overview of the LCGE Framework
 ![image](https://github.com/ngl567/LCGE/blob/master/framework.png)
 
+## Appendix
+We provide the [Appendix](https://github.com/ngl567/LCGE/blob/master/AAAI2023-LCGE-appendix.pdf) of our original paper published on AAAI 2023, containing Description of the Temporal Rule Patterns, Evaluation Criteria of Length-2 Temporal Rules, the Algorithm of Our Proposed Temporal Rule Learning Module and Proof of Representing Causality Among Events via RGPR Mechanism.
+
 ## Installation
 Create a conda environment with pytorch and scikit-learn:  
 ```
