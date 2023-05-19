@@ -56,6 +56,9 @@ python learner_lcge.py --dataset ICEWS05-15 --model LCGE --rank 2000 --emb_reg 0
 python learner_cs.py --dataset wikidata12k --model LCGE --rank 2000 --emb_reg 0.02 --time_reg 0.1 --rule_reg 0.01 --max_epoch 500 --weight_static 2.5 --learning_rate 0.1 --valid_freq 1
 ```
 
+## Notes
+We have discovered some issues with the previous version of the code. We apologize for any inconvenience caused by these errors and took immediate steps to rectify the situation by rerunning the experiments with corrected code and updated the results in the [current version of our paper](https://arxiv.org/pdf/2211.16865.pdf). The updated experimental results indicate that our proposed model is still effective and outperforms all baseline approaches.
+
 ## Citation
 If you use the codes, please cite the following paper:
 ```
