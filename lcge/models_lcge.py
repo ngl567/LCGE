@@ -19,6 +19,10 @@ class TKBCModel(nn.Module, ABC):
         pass
 
     @abstractmethod
+    def get_rhs_static(self, queries: torch.Tensor):
+        pass
+
+    @abstractmethod
     def score(self, x: torch.Tensor):
         pass
 
@@ -51,12 +55,17 @@ class TKBCModel(nn.Module, ABC):
                     these_queries = queries[b_begin:b_begin + batch_size]
                     q = self.get_queries(these_queries)
 
-                    scores = q @ rhs
-                    targets = self.score(these_queries)
-                    assert not torch.any(torch.isinf(scores)), "inf scores"
-                    assert not torch.any(torch.isnan(scores)), "nan scores"
-                    assert not torch.any(torch.isinf(targets)), "inf targets"
-                    assert not torch.any(torch.isnan(targets)), "nan targets"
+                    #scores = q[0] @ rhs + 0.1 * q[1] @ self.get_rhs_static(c_begin, chunk_size)
+                    #targets = self.score(these_queries)
+                    scores_tem = q[0] @ rhs
+                    scores_cs =  q[1] @ self.get_rhs_static(c_begin, chunk_size)
+                    targets_tem, targets_cs = self.score(these_queries)
+                    #print("scores_cs:\n{}\n\ntargets_cs:\n{}\n".format(scores_cs, targets_cs))
+
+                    #assert not torch.any(torch.isinf(scores)), "inf scores"
+                    #assert not torch.any(torch.isnan(scores)), "nan scores"
+                    #assert not torch.any(torch.isinf(targets)), "inf targets"
+                    #assert not torch.any(torch.isnan(targets)), "nan targets"
 
                     # set filtered and true scores to -1e6 to be ignored
                     # take care that scores are chunked
@@ -68,11 +77,11 @@ class TKBCModel(nn.Module, ABC):
                                 int(x - c_begin) for x in filter_out
                                 if c_begin <= x < c_begin + chunk_size
                             ]
-                            scores[i, torch.LongTensor(filter_in_chunk)] = -1e6
+                            scores_tem[i, torch.LongTensor(filter_in_chunk)] = -1e6
                         else:
-                            scores[i, torch.LongTensor(filter_out)] = -1e6
+                            scores_tem[i, torch.LongTensor(filter_out)] = -1e6
                     ranks[b_begin:b_begin + batch_size] += torch.sum(
-                        (scores >= targets).float(), dim=1
+                        (torch.mul(scores_tem >= targets_tem, scores_cs > targets_cs)).float(), dim=1
                     ).cpu()
 
                     b_begin += batch_size
@@ -151,12 +160,12 @@ class TKBCModel(nn.Module, ABC):
 class LCGE(TKBCModel):
     def __init__(
             self, sizes: Tuple[int, int, int, int], rank: int, Rules, w_static,
-            no_time_emb=False, init_size: float = 1e-2
+            no_time_emb=False, init_size: float = 1e-3
     ):
         super(LCGE, self).__init__()
         self.sizes = sizes
         self.rank = rank
-        self.rank_static = rank // 2
+        self.rank_static = rank // 20
         self.w_static = w_static
 
         self.embeddings = nn.ModuleList([
@@ -213,7 +222,7 @@ class LCGE(TKBCModel):
             (lhs[0] * full_rel[0] - lhs[1] * full_rel[1]) * rhs[0] +
             (lhs[1] * full_rel[0] + lhs[0] * full_rel[1]) * rhs[1],
             1, keepdim=True
-        ) + self.w_static * torch.sum(
+        ), torch.sum(
             (h_static[0] * r_static[0] - h_static[1] * r_static[1]) * t_static[0] +
             (h_static[1] * r_static[0] + h_static[0] * r_static[1]) * t_static[1],
             1, keepdim=True
@@ -259,12 +268,13 @@ class LCGE(TKBCModel):
            torch.sqrt(rrt[0] ** 2 + rrt[1] ** 2),
            torch.sqrt(rnt[0] ** 2 + rnt[1] ** 2),
            math.pow(2, 1 / 3) * torch.sqrt(rhs[0] ** 2 + rhs[1] ** 2),
-           math.pow(2, 1 / 3) * torch.sqrt(h_static[0] ** 2 + h_static[1] ** 2),
-           math.pow(2, 1 / 3) * torch.sqrt(r_static[0] ** 2 + r_static[1] ** 2),
-           math.pow(2, 1 / 3) * torch.sqrt(t_static[0] ** 2 + t_static[1] ** 2)
+           torch.sqrt(h_static[0] ** 2 + h_static[1] ** 2),
+           torch.sqrt(r_static[0] ** 2 + r_static[1] ** 2),
+           torch.sqrt(t_static[0] ** 2 + t_static[1] ** 2)
         )
 
         rule = 0.
+        rule_num = 0
         for rel_1 in x[:, 1]:
             rel_1_str = str(rel_1.item())
             if rel_1_str in self.rule1_p2:
@@ -273,6 +283,7 @@ class LCGE(TKBCModel):
                     weight_r = self.rule1_p2[rel_1_str][rel_2]
                     rel2_emb = self.embeddings[3](torch.LongTensor([int(rel_2)]).cuda())[0]
                     rule += weight_r * torch.sum(torch.abs(rel1_emb - rel2_emb) ** 3)
+                    rule_num += 1
     
         for rel_1 in x[:, 1]:
             rel_1_str = str(rel_1.item())
@@ -287,6 +298,7 @@ class LCGE(TKBCModel):
                     rtt = tt[0] - tt[3], tt[1] + tt[2]
                     #print("rel1_split:\t", rel1_split[0])
                     rule += weight_r * (torch.sum(torch.abs(rel1_split[0] - rtt[0]) ** 3) + torch.sum(torch.abs(rel1_split[1] - rtt[1]) ** 3))
+                    rule_num += 1
 
         for rel_1 in x[:, 1]:
             if rel_1 in self.rule2_p1:
@@ -309,6 +321,7 @@ class LCGE(TKBCModel):
                     rtt = tt[0] - tt[3], tt[1] + tt[2]
                     #print("rel1_split:\t", rel1_split[0])
                     rule += weight_r * (torch.sum(torch.abs(rel1_split[0] - rtt[0]) ** 3) + torch.sum(torch.abs(rel1_split[1] - rtt[1]) ** 3))
+                    rule_num += 1
         
         for rel_1 in x[:, 1]:
             if rel_1 in self.rule2_p2:
@@ -329,6 +342,7 @@ class LCGE(TKBCModel):
                     rtt = tt[0] - tt[3], tt[1] + tt[2]
                     #print("rel1_split:\t", rel1_split[0])
                     rule += weight_r * (torch.sum(torch.abs(rel1_split[0] - rtt[0]) ** 3) + torch.sum(torch.abs(rel1_split[1] - rtt[1]) ** 3))
+                    rule_num += 1
         
         for rel_1 in x[:, 1]:
             if rel_1 in self.rule2_p3:
@@ -347,6 +361,7 @@ class LCGE(TKBCModel):
                     rtt = tt[0] - tt[3], tt[1] + tt[2]
                     #print("rel1_split:\t", rel1_split[0])
                     rule += weight_r * (torch.sum(torch.abs(rel1_split[0] - rtt[0]) ** 3) + torch.sum(torch.abs(rel1_split[1] - rtt[1]) ** 3))
+                    rule_num += 1
         
         for rel_1 in x[:, 1]:
             if rel_1 in self.rule2_p4:
@@ -363,13 +378,15 @@ class LCGE(TKBCModel):
                     rtt = tt[0] - tt[3], tt[1] + tt[2]
                     #print("rel1_split:\t", rel1_split[0])
                     rule += weight_r * (torch.sum(torch.abs(rel1_split[0] - rtt[0]) ** 3) + torch.sum(torch.abs(rel1_split[1] - rtt[1]) ** 3))
+                    rule_num += 1
 
-        return ((
+        rule = rule / rule_num
+        return (
                (lhs[0] * full_rel[0] - lhs[1] * full_rel[1]) @ right[0].t() +
-               (lhs[1] * full_rel[0] + lhs[0] * full_rel[1]) @ right[1].t() +
-               self.w_static * ((h_static[0] * r_static[0] - h_static[1] * r_static[1]) @ right_static[0].t() +
-               (h_static[1] * r_static[0] + h_static[0] * r_static[1]) @ right_static[1].t())
-            ), regularizer,
+               (lhs[1] * full_rel[0] + lhs[0] * full_rel[1]) @ right[1].t(),
+               (h_static[0] * r_static[0] - h_static[1] * r_static[1]) @ right_static[0].t() +
+               (h_static[1] * r_static[0] + h_static[0] * r_static[1]) @ right_static[1].t(),
+               regularizer,
                self.embeddings[2].weight[:-1] if self.no_time_emb else self.embeddings[2].weight,
                rule
         )
@@ -407,6 +424,11 @@ class LCGE(TKBCModel):
         return self.embeddings[0].weight.data[
                chunk_begin:chunk_begin + chunk_size
                ].transpose(0, 1)
+    
+    def get_rhs_static(self, chunk_begin: int, chunk_size: int):
+        return self.static_embeddings[0].weight.data[
+               chunk_begin:chunk_begin + chunk_size
+               ].transpose(0, 1)
 
     def get_queries(self, queries: torch.Tensor):
         lhs = self.embeddings[0](queries[:, 0])
@@ -422,8 +444,16 @@ class LCGE(TKBCModel):
         rt = rel[0] * time[0], rel[1] * time[0], rel[0] * time[1], rel[1] * time[1]
         full_rel = (rt[0] - rt[3]) + rnt[0], (rt[1] + rt[2]) + rnt[1]
 
+        h_static = self.static_embeddings[0](queries[:, 0])
+        r_static = self.static_embeddings[1](queries[:, 1])
+        
+        h_static = h_static[:, :self.rank_static], h_static[:, self.rank_static:]
+        r_static = r_static[:, :self.rank_static], r_static[:, self.rank_static:]
+
         return torch.cat([
             lhs[0] * full_rel[0] - lhs[1] * full_rel[1],
             lhs[1] * full_rel[0] + lhs[0] * full_rel[1]
+        ], 1), torch.cat([
+            h_static[0] * r_static[0] - h_static[1] * r_static[1],
+            h_static[1] * r_static[0] + h_static[0] * r_static[1]
         ], 1)
-
