@@ -27,6 +27,7 @@ class TKBCOptimizer(object):
     def epoch(self, examples: torch.LongTensor):
         actual_examples = examples[torch.randperm(examples.shape[0]), :]
         loss = nn.CrossEntropyLoss(reduction='mean')
+        loss_static = nn.CrossEntropyLoss(reduction='mean')
         with tqdm.tqdm(total=examples.shape[0], unit='ex', disable=not self.verbose) as bar:
             bar.set_description(f'train loss')
             b_begin = 0
@@ -34,15 +35,17 @@ class TKBCOptimizer(object):
                 input_batch = actual_examples[
                     b_begin:b_begin + self.batch_size
                 ].cuda()
-                predictions, factors, time = self.model.forward(input_batch)
+                predictions, pred_static, factors, time = self.model.forward(input_batch)
                 truth = input_batch[:, 2]
 
                 l_fit = loss(predictions, truth)
+                l_static = loss_static(pred_static, truth)
                 l_reg = self.emb_regularizer.forward(factors)
                 l_time = torch.zeros_like(l_reg)
+                
                 if time is not None:
                     l_time = self.temporal_regularizer.forward(time)
-                l = l_fit + l_reg + l_time
+                l = l_fit + 0.1 * l_static + l_reg + l_time
 
                 self.optimizer.zero_grad()
                 l.backward()
@@ -51,9 +54,10 @@ class TKBCOptimizer(object):
                 bar.update(input_batch.shape[0])
                 bar.set_postfix(
                     loss=f'{l_fit.item():.2f}',
+                    loss_cs=f'{l_static.item():.2f}',
                     reg=f'{l_reg.item():.2f}',
-                    cont=f'{l_time.item():.2f}',
-                )
+                    cont=f'{l_time.item():.2f}'
+                )      
 
 
 class IKBCOptimizer(object):
@@ -74,6 +78,7 @@ class IKBCOptimizer(object):
     def epoch(self, examples: torch.LongTensor):
         actual_examples = examples[torch.randperm(examples.shape[0]), :]
         loss = nn.CrossEntropyLoss(reduction='mean')
+        loss_static = nn.CrossEntropyLoss(reduction='mean')
         with tqdm.tqdm(total=examples.shape[0], unit='ex', disable=not self.verbose) as bar:
             bar.set_description(f'train loss')
             b_begin = 0
@@ -87,10 +92,11 @@ class IKBCOptimizer(object):
                 ).round().long()
                 with_time = torch.cat((time_range[:, 0:3], sampled_time.unsqueeze(1)), 1)
 
-                predictions, factors, time = self.model.forward(with_time)
+                predictions, pred_static, factors, time = self.model.forward(with_time)
                 truth = with_time[:, 2]
 
                 l_fit = loss(predictions, truth)
+                l_static = loss_static(pred_static, truth)
 
                 ## Time prediction loss (ie cross entropy over time)
                 time_loss = 0.
@@ -111,7 +117,7 @@ class IKBCOptimizer(object):
                 l_time = torch.zeros_like(l_reg)
                 if time is not None:
                     l_time = self.temporal_regularizer.forward(time)
-                l = l_fit + l_reg + l_time + time_loss
+                l = l_fit + 0.1 * l_static + l_reg + l_time + time_loss
 
                 self.optimizer.zero_grad()
                 l.backward()
